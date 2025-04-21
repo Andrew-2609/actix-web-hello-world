@@ -1,23 +1,28 @@
-use actix_web::{App, HttpServer, get, web};
+use std::sync::Mutex;
 
-struct AppState {
-    app_name: String,
+use actix_web::{App, HttpServer, Responder, web};
+
+struct AppStateWithCounter {
+    counter: Mutex<i32>,
 }
 
-#[get("/")]
-async fn index(data: web::Data<AppState>) -> String {
-    let app_name = &data.app_name;
-    format!("Hello {app_name}!\n")
+async fn index(data: web::Data<AppStateWithCounter>) -> impl Responder {
+    let mut counter = data.counter.lock().unwrap();
+    *counter += 1;
+
+    format!("Request number: {counter}\n")
 }
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(|| {
+    let counter = web::Data::new(AppStateWithCounter {
+        counter: Mutex::new(0),
+    });
+
+    HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppState {
-                app_name: String::from("Actix Web"),
-            }))
-            .service(index)
+            .app_data(counter.clone())
+            .route("/", web::get().to(index))
     })
     .bind(("127.0.0.1", 8081))?
     .run()
