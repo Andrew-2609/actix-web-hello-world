@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use std::{collections::HashMap, sync::Mutex};
 
-use actix_web::{App, HttpServer, Responder, Result, get, post, web};
+use actix_web::{App, HttpResponse, HttpServer, Responder, Result, error, get, web};
 
 struct AppState {
     users: Mutex<HashMap<i64, String>>,
@@ -23,7 +23,6 @@ async fn index(path: web::Path<i64>, data: web::Data<AppState>) -> impl Responde
     format!("{result}\n")
 }
 
-#[post("/users")]
 async fn add_user(info: web::Json<User>, data: web::Data<AppState>) -> Result<String> {
     let user_id = info.user_id;
     let user_name = &info.user_name;
@@ -48,10 +47,20 @@ async fn main() -> std::io::Result<()> {
     });
 
     HttpServer::new(move || {
+        let json_config = web::JsonConfig::default()
+            .limit(4096)
+            .error_handler(|err, _req| {
+                error::InternalError::from_response(err, HttpResponse::Conflict().finish()).into()
+            });
+
         App::new()
             .app_data(app_state.clone())
             .service(index)
-            .service(add_user)
+            .service(
+                web::resource("/users")
+                    .app_data(json_config)
+                    .route(web::post().to(add_user)),
+            )
     })
     .bind("0.0.0.0:8081")?
     .run()
